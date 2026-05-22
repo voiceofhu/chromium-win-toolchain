@@ -7,7 +7,9 @@ without requiring access to Google's private `chrome-wintoolchain` bucket.
 
 1. Open the `Package Chromium Windows Toolchain` workflow in GitHub Actions.
 2. Click `Run workflow`.
-3. Keep `include_arm64` as `false` for x64 Chromium builds.
+3. Keep `include_arm64` as `true`, especially when cross-building from an
+   Apple Silicon Mac. Chromium may need the ARM64 toolchain environment even
+   when `target_cpu` is `x64`.
 4. Download the `chromium-win-toolchain` artifact when the run finishes.
 
 The artifact contains a `<hash>.zip` toolchain package and `usage.txt`.
