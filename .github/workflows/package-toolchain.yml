@@ -1,6 +1,11 @@
 name: Package Chromium Windows Toolchain
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/package-toolchain.yml"
   workflow_dispatch:
     inputs:
       include_arm64:
@@ -27,7 +32,8 @@ jobs:
         working-directory: depot_tools/win_toolchain
         run: |
           $args = @("package_from_installed.py", "2026", "-w", "10.0.26100.0")
-          if ("${{ inputs.include_arm64 }}" -eq "false") {
+          $includeArm64 = "${{ inputs.include_arm64 }}"
+          if ($includeArm64 -ne "true") {
             $args += "--noarm"
           }
           python @args
