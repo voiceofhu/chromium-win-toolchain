@@ -79,11 +79,21 @@ jobs:
         run: |
           $args = @("package_from_installed.py", "2026", "-w", "10.0.26100.0")
           $includeArm64 = "${{ inputs.include_arm64 }}"
+          if ([string]::IsNullOrWhiteSpace($includeArm64)) {
+            $includeArm64 = "true"
+          }
           if ($includeArm64 -ne "true") {
             $args += "--noarm"
           }
           python @args
+          $zip = Get-ChildItem *.zip | Select-Object -First 1
           Get-ChildItem *.zip
+          if ($includeArm64 -eq "true") {
+            $hasArm64Env = (tar -tf $zip.Name | Select-String -SimpleMatch "Windows Kits/10/bin/SetEnv.arm64.json")
+            if (-not $hasArm64Env) {
+              throw "Packaged toolchain is missing Windows Kits/10/bin/SetEnv.arm64.json"
+            }
+          }
 
       - name: Write usage hint
         shell: pwsh

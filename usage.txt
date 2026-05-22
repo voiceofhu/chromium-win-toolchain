@@ -1,7 +1,9 @@
 Download this artifact, unzip it into a local directory, then run:
 
-  export DEPOT_TOOLS_WIN_TOOLCHAIN_BASE_URL=/path/to/toolchain-dir
-  export GYP_MSVS_HASH_e66617bc68=b022eb7e3b
+  export DEPOT_TOOLS_WIN_TOOLCHAIN_BASE_URL=/Volumes/sn@root/Documents/workspaces/voh/chromium/chromium-win-toolchain
+  export GYP_MSVS_HASH_e66617bc68=88785f8c00
+  make build-win
+  
 
 Then rerun:
 
