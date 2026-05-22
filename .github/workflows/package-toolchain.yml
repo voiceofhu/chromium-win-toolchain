@@ -31,16 +31,47 @@ jobs:
         shell: pwsh
         run: |
           $path = "depot_tools/win_toolchain/package_from_installed.py"
-          $text = Get-Content $path -Raw
-          $text = $text.Replace(
-            "matches = glob.glob(path)",
-            "matches = sorted(glob.glob(path))"
-          )
-          $text = $text.Replace(
-            "if len(matches) != 1:`n        raise Exception('%s had %d matches - should be one' %`n                        (path, len(matches)))`n    return matches[0]",
-            "if len(matches) > 1:`n        print('%s had %d matches; using %s.' % (path, len(matches), matches[-1]))`n        return matches[-1]`n    if len(matches) != 1:`n        raise Exception('%s had %d matches - should be one' %`n                        (path, len(matches)))`n    return matches[0]"
-          )
-          Set-Content -Path $path -Value $text -NoNewline
+          $script = @'
+          import pathlib
+          import re
+
+          path = pathlib.Path("depot_tools/win_toolchain/package_from_installed.py")
+          text = path.read_text()
+          replacement = r'''def _WildcardVersionKey(path):
+              import re
+              return ([int(piece) for piece in re.findall(r'\d+', path)], path.lower())
+
+
+          def ExpandWildcards(root, sub_dir):
+              # normpath is needed to change '/' to '\\' characters.
+              path = os.path.normpath(os.path.join(root, sub_dir))
+              matches = glob.glob(path)
+              if len(matches) == 1:
+                  return matches[0]
+              if len(matches) > 1:
+                  selected = sorted(matches, key=_WildcardVersionKey)[-1]
+                  print('%s had %d matches; using latest %s.' %
+                        (path, len(matches), selected))
+                  return selected
+              raise Exception('%s had %d matches - should be one' %
+                              (path, len(matches)))
+          '''
+          pattern = r"def ExpandWildcards\(root, sub_dir\):\r?\n.*?\r?\n(?=def BuildRepackageFileList)"
+          text, count = re.subn(pattern, replacement + "\n", text, count=1, flags=re.S)
+          if count != 1 or "using latest" not in text:
+              raise SystemExit("Failed to patch ExpandWildcards")
+          path.write_text(text)
+          '@
+          python -c $script
+          $patched = Get-Content $path
+          $start = 0
+          for ($i = 0; $i -lt $patched.Length; $i++) {
+            if ($patched[$i].StartsWith("def _WildcardVersionKey")) {
+              $start = $i
+              break
+            }
+          }
+          $patched[$start..($start + 22)]
 
       - name: Package installed VS and Windows SDK
         shell: pwsh
