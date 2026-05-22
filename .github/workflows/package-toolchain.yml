@@ -57,7 +57,7 @@ jobs:
                               (path, len(matches)))
           '''
           pattern = r"def ExpandWildcards\(root, sub_dir\):\r?\n.*?\r?\n(?=def BuildRepackageFileList)"
-          text, count = re.subn(pattern, replacement + "\n", text, count=1, flags=re.S)
+          text, count = re.subn(pattern, lambda _: replacement + "\n", text, count=1, flags=re.S)
           if count != 1 or "using latest" not in text:
               raise SystemExit("Failed to patch ExpandWildcards")
           path.write_text(text)
