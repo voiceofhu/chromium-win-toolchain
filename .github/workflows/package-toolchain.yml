@@ -1,0 +1,61 @@
+name: Package Chromium Windows Toolchain
+
+on:
+  workflow_dispatch:
+    inputs:
+      include_arm64:
+        description: Include ARM64 toolchain files
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  package:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 360
+
+    steps:
+      - name: Clone depot_tools
+        shell: pwsh
+        run: git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+
+      - name: Package installed VS and Windows SDK
+        shell: pwsh
+        working-directory: depot_tools/win_toolchain
+        run: |
+          $args = @("package_from_installed.py", "2026", "-w", "10.0.26100.0")
+          if ("${{ inputs.include_arm64 }}" -eq "false") {
+            $args += "--noarm"
+          }
+          python @args
+          Get-ChildItem *.zip
+
+      - name: Write usage hint
+        shell: pwsh
+        working-directory: depot_tools/win_toolchain
+        run: |
+          $zip = Get-ChildItem *.zip | Select-Object -First 1
+          $hash = [System.IO.Path]::GetFileNameWithoutExtension($zip.Name)
+          @"
+          Download this artifact, unzip it into a local directory, then run:
+
+            export DEPOT_TOOLS_WIN_TOOLCHAIN_BASE_URL=/path/to/toolchain-dir
+            export GYP_MSVS_HASH_e66617bc68=$hash
+
+          Then rerun:
+
+            make build-win
+          "@ | Set-Content -Encoding UTF8 usage.txt
+
+      - name: Upload toolchain artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromium-win-toolchain
+          path: |
+            depot_tools/win_toolchain/*.zip
+            depot_tools/win_toolchain/usage.txt
+          compression-level: 0
+          retention-days: 3
