@@ -27,6 +27,45 @@ jobs:
         shell: pwsh
         run: git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
 
+      - name: Patch packager for hosted runner MSVC layout
+        shell: pwsh
+        run: |
+          $path = "depot_tools/win_toolchain/package_from_installed.py"
+          $text = Get-Content $path -Raw
+          $old = @'
+def ExpandWildcards(root, sub_dir):
+    # normpath is needed to change '/' to '\\' characters.
+    path = os.path.normpath(os.path.join(root, sub_dir))
+    matches = glob.glob(path)
+    if len(matches) != 1:
+        raise Exception('%s had %d matches - should be one' %
+                        (path, len(matches)))
+    return matches[0]
+'@
+          $new = @'
+def _WildcardVersionKey(path):
+    import re
+    return ([int(piece) for piece in re.findall(r'\d+', path)], path.lower())
+
+
+def ExpandWildcards(root, sub_dir):
+    # normpath is needed to change '/' to '\\' characters.
+    path = os.path.normpath(os.path.join(root, sub_dir))
+    matches = glob.glob(path)
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        selected = sorted(matches, key=_WildcardVersionKey)[-1]
+        print('%s had %d matches; using %s.' % (path, len(matches), selected))
+        return selected
+    raise Exception('%s had %d matches - should be one' % (path, len(matches)))
+'@
+          if (-not $text.Contains($old)) {
+            throw "Could not find ExpandWildcards patch target."
+          }
+          $text = $text.Replace($old, $new)
+          Set-Content -Path $path -Value $text -NoNewline
+
       - name: Package installed VS and Windows SDK
         shell: pwsh
         working-directory: depot_tools/win_toolchain
