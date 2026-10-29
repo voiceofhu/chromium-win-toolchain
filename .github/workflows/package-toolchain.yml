@@ -21,8 +21,58 @@ jobs:
   package:
     runs-on: windows-2025-vs2026
     timeout-minutes: 360
+    env:
+      # Chromium M157 build/vs_toolchain.py: SDK_VERSION and TOOLCHAIN_HASH.
+      WINDOWS_SDK_VERSION: "10.0.28000.0"
+      CHROMIUM_TOOLCHAIN_HASH: "3bfcb536c8"
+      # winget Microsoft.WindowsSDK.10.0.28000 10.0.28000.2526; the hosted
+      # image only ships the 26100 SDK.
+      WINDOWS_SDK_INSTALLER_URL: "https://download.microsoft.com/download/06fc99ac-527e-451e-a536-8866695a2e7e/KIT_BUNDLE_WINDOWSSDK_MEDIACREATION/winsdksetup.exe"
+      WINDOWS_SDK_INSTALLER_SHA256: "02988EA51EAB2A2DB53E19735E51C97A6D221ADA74B9174FA0868870B9403BA0"
+      # Chromium needs SDK Debugging Tools 10.0.26100.3323 or newer.
+      MIN_DEBUGGERS_VERSION: "10.0.26100.3323"
 
     steps:
+      - name: Install Windows SDK
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP "winsdksetup.exe"
+          $log = Join-Path $env:RUNNER_TEMP "winsdksetup.log"
+          Invoke-WebRequest -Uri $env:WINDOWS_SDK_INSTALLER_URL -OutFile $installer
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash
+          if ($hash -ne $env:WINDOWS_SDK_INSTALLER_SHA256) {
+            throw "winsdksetup.exe SHA256 mismatch: $hash"
+          }
+          # "+" selects every feature, including Debugging Tools and the
+          # ARM64 desktop libraries Chromium packages.
+          $process = Start-Process -FilePath $installer -Wait -PassThru -ArgumentList @(
+            "/features", "+", "/quiet", "/norestart", "/ceip", "off", "/log", $log
+          )
+          if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
+            Get-Content $log -Tail 80
+            throw "winsdksetup.exe exited with $($process.ExitCode)"
+          }
+
+          $kits = Join-Path ${env:ProgramFiles(x86)} "Windows Kits\10"
+          $sdk = $env:WINDOWS_SDK_VERSION
+          foreach ($path in @(
+            "Include\$sdk\um\windows.h",
+            "Lib\$sdk\um\x64\kernel32.lib",
+            "Lib\$sdk\um\arm64\kernel32.lib",
+            "bin\$sdk\x64\rc.exe",
+            "Debuggers\x64\dbghelp.dll"
+          )) {
+            if (-not (Test-Path (Join-Path $kits $path))) {
+              throw "Windows SDK install is missing $path"
+            }
+          }
+          $dbghelp = (Get-Item (Join-Path $kits "Debuggers\x64\dbghelp.dll")).VersionInfo
+          $debuggers = [version]::new($dbghelp.FileMajorPart, $dbghelp.FileMinorPart, $dbghelp.FileBuildPart, $dbghelp.FilePrivatePart)
+          Write-Host "Debugging Tools: $debuggers"
+          if ($debuggers -lt [version]$env:MIN_DEBUGGERS_VERSION) {
+            throw "Debugging Tools $debuggers is older than $env:MIN_DEBUGGERS_VERSION"
+          }
+
       - name: Clone depot_tools
         shell: pwsh
         run: git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
@@ -77,7 +127,7 @@ jobs:
         shell: pwsh
         working-directory: depot_tools/win_toolchain
         run: |
-          $args = @("package_from_installed.py", "2026", "-w", "10.0.26100.0")
+          $args = @("package_from_installed.py", "2026", "-w", $env:WINDOWS_SDK_VERSION)
           $includeArm64 = "${{ inputs.include_arm64 }}"
           if ([string]::IsNullOrWhiteSpace($includeArm64)) {
             $includeArm64 = "true"
@@ -88,6 +138,10 @@ jobs:
           python @args
           $zip = Get-ChildItem *.zip | Select-Object -First 1
           Get-ChildItem *.zip
+          $hasSdkHeaders = (tar -tf $zip.Name | Select-String -SimpleMatch "Windows Kits/10/Include/$env:WINDOWS_SDK_VERSION/um/windows.h")
+          if (-not $hasSdkHeaders) {
+            throw "Packaged toolchain is missing the $env:WINDOWS_SDK_VERSION SDK headers"
+          }
           if ($includeArm64 -eq "true") {
             $hasArm64Env = (tar -tf $zip.Name | Select-String -SimpleMatch "Windows Kits/10/bin/SetEnv.arm64.json")
             if (-not $hasArm64Env) {
@@ -105,7 +159,7 @@ jobs:
           Download this artifact, unzip it into a local directory, then run:
 
             export DEPOT_TOOLS_WIN_TOOLCHAIN_BASE_URL=/path/to/toolchain-dir
-            export GYP_MSVS_HASH_e66617bc68=$hash
+            export GYP_MSVS_HASH_$($env:CHROMIUM_TOOLCHAIN_HASH)=$hash
 
           Then rerun:
 

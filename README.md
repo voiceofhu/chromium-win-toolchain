@@ -26,10 +26,12 @@ Then export:
 
 ```bash
 export DEPOT_TOOLS_WIN_TOOLCHAIN_BASE_URL=/Volumes/sn@root/toolchains/chromium-win
-export GYP_MSVS_HASH_e66617bc68=<hash>
+export GYP_MSVS_HASH_3bfcb536c8=<hash>
 ```
 
-`<hash>` is the zip filename without `.zip`.
+`<hash>` is the zip filename without `.zip`. `3bfcb536c8` is Chromium's
+`TOOLCHAIN_HASH` in `src/build/vs_toolchain.py` (M156/M157); use the value from
+your checkout when Chromium rolls its toolchain.
 
 Then rerun Chromium's Windows build:
 
@@ -41,6 +43,10 @@ make build-win
 ## Notes
 
 - This workflow uses the GitHub-hosted `windows-2025-vs2026` runner.
-- It packages Visual Studio `2026` and Windows SDK `10.0.26100.0`.
+- It packages Visual Studio `2026` and Windows SDK `10.0.28000.0`, which
+  Chromium M156+ requires. The runner image only ships the 26100 SDK, so the
+  workflow first installs `winsdksetup.exe` (10.0.28000.2526, SHA256-checked,
+  all features including Debugging Tools). To move to another SDK, update the
+  `WINDOWS_SDK_*` and `CHROMIUM_TOOLCHAIN_HASH` values in the workflow `env`.
 - The generated package is for your own build environment. Do not publish or
   redistribute it without confirming the relevant Microsoft license terms.
